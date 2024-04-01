@@ -1,5 +1,6 @@
 import io
 import logging
+import operator
 from typing import Tuple, Optional
 import cv2
 import pandas as pd
@@ -91,8 +92,8 @@ class OCRProcessor(LayoutParser):
         if table_b:
             logging.info("Table Detected")
             table_boxes = table_b.to_dict()
-
-            for table_block in table_boxes["blocks"]:
+            sorted_boxes = sorted(table_boxes["blocks"], key=operator.itemgetter('y_1', 'x_1'))
+            for table_block in sorted_boxes:
                 x_1 = int(table_block["x_1"]) - 5
                 y_1 = int(table_block["y_1"]) - 5
                 x_2 = int(table_block["x_2"]) + 5
@@ -103,8 +104,8 @@ class OCRProcessor(LayoutParser):
         if text_b:
             logging.info("Text Box Detected")
             text_boxes = text_b.to_dict()
-
-            for text_block in text_boxes["blocks"]:
+            sorted_boxes = sorted(text_boxes["blocks"], key=operator.itemgetter('y_1', 'x_1'))
+            for text_block in sorted_boxes:
                 x_1 = int(text_block["x_1"]) - 5
                 y_1 = int(text_block["y_1"]) - 5
                 x_2 = int(text_block["x_2"]) + 5
