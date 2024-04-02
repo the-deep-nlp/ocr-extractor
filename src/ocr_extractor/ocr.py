@@ -122,7 +122,7 @@ class OCRProcessor(LayoutParser):
                 crop_img = image[y_1:y_2, x_1:x_2]
                 tbl_df = self.table_extraction(crop_img)
                 if not tbl_df.empty:
-                    link = self.s3handler.get_s3_url(tbl_df, f"{page_num}_{idx}")
+                    link = self.s3handler.get_s3_link_or_local_path(tbl_df, f"{page_num}_{idx}")
                     if "contents" not in self.tables:
                         self.tables["contents"] = []
                     self.tables["contents"].append({
@@ -213,7 +213,7 @@ class StorageHandler:
             return None
         return url
 
-    def get_s3_url(
+    def get_s3_link_or_local_path(
         self,
         df: pd.DataFrame,
         tbl_filename: str
@@ -238,4 +238,7 @@ class StorageHandler:
             generated_url = self.generate_presigned_url(bucket_key=merged_bucket_key)
             return generated_url
         else:
-            logging.error("Cannot store contents in s3")
+            logging.info("Not enough info for S3 storage. Storing data in the local disk.")
+            output_filepath = f"./outputs/{tbl_filename}.csv"
+            df.to_csv(output_filepath, header=True, index=False)
+            return output_filepath
