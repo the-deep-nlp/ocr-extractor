@@ -5,6 +5,9 @@ from typing import Tuple, Optional
 import cv2
 import pandas as pd
 import numpy as np
+import boto3
+from botocore.client import Config
+from botocore.exceptions import ClientError
 import layoutparser as lp
 from paddleocr import PaddleOCR, PPStructure
 from paddleocr.ppstructure.recovery.recovery_to_doc import sorted_layout_boxes
@@ -15,11 +18,11 @@ logging.getLogger().setLevel(logging.INFO)
 
 
 class OCRBase:
-    def __init__(self, image_path: str, is_image: bool) -> None:
+    def __init__(self, file_path: str, is_image: bool) -> None:
         self.is_image = is_image
         self.image_cv = None
         self.pdf_pages = None
-        self.image_path = image_path
+        self.file_path = file_path
         if self.is_image:
             self.read_image()
         else:
@@ -28,12 +31,12 @@ class OCRBase:
     def read_image(self):
         """ Read the image / scanned doc """
         logging.info("Reading the image")
-        self.image_cv = cv2.imread(self.image_path)
+        self.image_cv = cv2.imread(self.file_path)
 
     def read_pdf_scanned_doc(self):
         """ Read scanned pdf doc """
         logging.info("Reading the pdf file")
-        page_imgs = convert_from_path(self.image_path)
+        page_imgs = convert_from_path(self.file_path)
         self.pdf_pages = [np.asarray(x) for x in page_imgs]
 
     def get_dims(self, img: np.ndarray) -> Tuple[float, float]:
@@ -42,8 +45,8 @@ class OCRBase:
 
 class LayoutParser(OCRBase):
     """ Detects the layout of the scanned docs """
-    def __init__(self, image_path: str, is_image: bool) -> None:
-        super().__init__(image_path, is_image)
+    def __init__(self, file_path: str, is_image: bool) -> None:
+        super().__init__(file_path, is_image)
 
     def process_layout(
         self,
@@ -71,21 +74,39 @@ class LayoutParser(OCRBase):
 
 class OCRProcessor(LayoutParser):
     """ OCR Processor """
-    def __init__(self, image_path: str, lang: str='en', is_image: bool=True) -> None:
-        super().__init__(image_path, is_image)
+    def __init__(
+        self,
+        file_path: str,
+        lang: str='en',
+        is_image: bool=True,
+        use_s3: bool=False,
+        s3_bucket_name: str=None,
+        s3_bucket_key: str=None
+    ) -> None:
+        super().__init__(file_path, is_image)
         self.ocr = PaddleOCR(lang=lang, recovery=True)
         self.table_engine = PPStructure(lang=lang, recovery=True)
+        self.texts = {}
+        self.tables = {}
+        self.use_s3 = use_s3
+        self.s3handler = StorageHandler(s3_bucket_name, s3_bucket_key)
+        
 
     def table_extraction(self, img):
+        """ Extract table contents and return the dataframe """
         tbl_contents = self.table_engine(img)
         height, width, _ = img.shape
         sorted_tbl_layout = sorted_layout_boxes(tbl_contents, width)
+        try:
+            if sorted_tbl_layout:
+                tbl_html_contents = sorted_tbl_layout[0]["res"]["html"]
+                df_html = pd.read_html(io.StringIO(tbl_html_contents))[0]
+                return df_html
+        except (KeyError, IndexError):
+            logging.warning("Table contents not found in html format.")
+        return pd.DataFrame()
 
-        if sorted_tbl_layout:
-            tbl_html_contents = sorted_tbl_layout[0]["res"]["html"]
-            df_html = pd.read_html(io.StringIO(tbl_html_contents))[0]
-            print(df_html)
-
+    
 
     def process(self, image, text_b, table_b, page_num=1):
         """ Extracts the contents from images / scans """
@@ -93,19 +114,28 @@ class OCRProcessor(LayoutParser):
             logging.info("Table Detected")
             table_boxes = table_b.to_dict()
             sorted_boxes = sorted(table_boxes["blocks"], key=operator.itemgetter('y_1', 'x_1'))
-            for table_block in sorted_boxes:
+            for idx, table_block in enumerate(sorted_boxes):
                 x_1 = int(table_block["x_1"]) - 5
                 y_1 = int(table_block["y_1"]) - 5
                 x_2 = int(table_block["x_2"]) + 5
                 y_2 = int(table_block["y_2"]) + 5
                 crop_img = image[y_1:y_2, x_1:x_2]
-                self.table_extraction(crop_img)
+                tbl_df = self.table_extraction(crop_img)
+                if not tbl_df.empty:
+                    link = self.s3handler.get_s3_url(tbl_df, f"{page_num}_{idx}")
+                    if "contents" not in self.tables:
+                        self.tables["contents"] = []
+                    self.tables["contents"].append({
+                        "page_number": page_num,
+                        "order": idx,
+                        "content_link": link  # can be None if error during url generation
+                    })
 
         if text_b:
             logging.info("Text Box Detected")
             text_boxes = text_b.to_dict()
             sorted_boxes = sorted(text_boxes["blocks"], key=operator.itemgetter('y_1', 'x_1'))
-            for text_block in sorted_boxes:
+            for idx, text_block in enumerate(sorted_boxes):
                 x_1 = int(text_block["x_1"]) - 5
                 y_1 = int(text_block["y_1"]) - 5
                 x_2 = int(text_block["x_2"]) + 5
@@ -116,18 +146,96 @@ class OCRProcessor(LayoutParser):
                 for output in ocr_outputs:
                     if output:
                         texts = [line[1][0] for line in output]
-                        logging.info(" ".join(texts))
+                        plain_texts = " ".join(texts)
+                        if "contents" not in self.texts:
+                            self.texts["contents"] = []
+                        self.texts["contents"].append({
+                            "page_number": page_num,
+                            "order": idx,
+                            "content": plain_texts
+                        })
+        return self.texts, self.tables
 
     def handler(self):
         """ OCR Processor """
         label_map = {0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
-
+        results = []
         if self.is_image:
             text_b, table_b = self.process_layout(self.image_cv, label_map=label_map)
-            self.process(self.image_cv, text_b, table_b)
+            result = self.process(self.image_cv, text_b, table_b)
+            results.append(result)
         else: # pdf scanned file
-            logging.info(f"Total number of pages: {len(self.pdf_pages)}")
+            logging.info("Total number of pages: %s", len(self.pdf_pages))
             for idx, pdf_page in enumerate(self.pdf_pages):
-                logging.info(f"Scanning page number {idx}")
+                logging.info("Scanning page number: %s", idx)
                 text_b, table_b = self.process_layout(pdf_page, label_map=label_map)
-                self.process(pdf_page, text_b, table_b)
+                result = self.process(pdf_page, text_b, table_b, page_num=idx)
+                results.append(result)
+        return results
+
+
+class StorageHandler:
+    def __init__(
+        self,
+        bucket_name: str,
+        bucket_key: str
+    ):
+        self.bucket_name = bucket_name
+        self.bucket_key = bucket_key
+        self.s3_client = boto3.client(
+            "s3",
+            region_name="us-east-1",
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"}
+            )
+        )
+
+    def generate_presigned_url(
+        self,
+        bucket_key: str,
+        signed_url_expiry_secs: int=86400
+    ):
+        """
+        Generates a presigned url of the file stored in s3
+        """
+        try:
+            url = self.s3_client.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={
+                    "Bucket": self.bucket_name,
+                    "Key": bucket_key
+                },
+                ExpiresIn=signed_url_expiry_secs
+            )
+        except ClientError as cexc:
+            logging.error("Error while generating presigned url %s", cexc)
+            return None
+        return url
+
+    def get_s3_url(
+        self,
+        df: pd.DataFrame,
+        tbl_filename: str
+    ):
+        """ Store contents in s3 """
+        if all([self.bucket_name, self.bucket_key, self.s3_client]):
+            merged_bucket_key = f"{self.bucket_key}/{tbl_filename}.csv"
+            csv_buf = io.StringIO()
+            df.to_csv(csv_buf, header=True, index=False)
+            csv_buf.seek(0)
+            try:
+                self.s3_client.put_object(
+                    Bucket=self.bucket_name,
+                    Body=csv_buf.getvalue(),
+                    Key=merged_bucket_key,
+                    ContentType="csv"
+                )
+                logging.info("Successfully uploaded the document.")
+            except ClientError as cexc:
+                logging.info("Error while uploading the document. %s", str(cexc))
+                return None
+            generated_url = self.generate_presigned_url(bucket_key=merged_bucket_key)
+            return generated_url
+        else:
+            logging.error("Cannot store contents in s3")

@@ -20,7 +20,8 @@ setup(
         "opencv-python==4.6.0.66",
         "layoutparser@https://paddleocr.bj.bcebos.com/whl/layoutparser-0.0.0-py3-none-any.whl",
         "protocol",
-        "sentry-sdk==1.5.8"
+        "sentry-sdk==1.5.8",
+        "boto3==1.34.74"
         ],
 
     author="Ranjan Shrestha",
