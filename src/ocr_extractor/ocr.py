@@ -253,7 +253,7 @@ class StorageHandler:
         else:
             logging.info("Not enough info for S3 storage. Storing data in the local disk.")
             output_filepath = f"./outputs/{tbl_filename}.html"
-            with open(output_filepath) as file:
+            with open(output_filepath, "w") as file:
                 file.write(html_contents)
             #df.to_csv(output_filepath, header=True, index=False)
             return output_filepath
