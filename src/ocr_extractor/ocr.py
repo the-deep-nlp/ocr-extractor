@@ -86,8 +86,6 @@ class OCRProcessor(LayoutParser):
         super().__init__(file_path, is_image)
         self.ocr = PaddleOCR(lang=lang, recovery=True)
         self.table_engine = PPStructure(lang=lang, recovery=True)
-        self.texts = {}
-        self.tables = {}
         self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key)
         
 
@@ -112,6 +110,8 @@ class OCRProcessor(LayoutParser):
 
     def process(self, image, text_b, table_b, page_num=1):
         """ Extracts the contents from images / scans """
+        tables_lst = []
+        texts_lst = []
         if table_b:
             logging.info("Table Detected")
             table_boxes = table_b.to_dict()
@@ -125,9 +125,7 @@ class OCRProcessor(LayoutParser):
                 tbl_html_contents = self.table_extraction(crop_img)
                 if tbl_html_contents:
                     link = self.s3handler.get_s3_link_or_local_path(tbl_html_contents, f"{page_num}_{idx}")
-                    if "contents" not in self.tables:
-                        self.tables["contents"] = []
-                    self.tables["contents"].append({
+                    tables_lst.append({
                         "page_number": page_num,
                         "order": idx,
                         "content_link": link  # can be None if error during url generation
@@ -149,14 +147,12 @@ class OCRProcessor(LayoutParser):
                     if output:
                         texts = [line[1][0] for line in output]
                         plain_texts = " ".join(texts)
-                        if "contents" not in self.texts:
-                            self.texts["contents"] = []
-                        self.texts["contents"].append({
+                        texts_lst.append({
                             "page_number": page_num,
                             "order": idx,
                             "content": plain_texts
                         })
-        return self.texts, self.tables
+        return texts_lst, tables_lst
 
     def handler(self) -> list:
         """ OCR Processor """
