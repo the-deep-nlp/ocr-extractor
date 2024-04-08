@@ -88,8 +88,7 @@ class OCRProcessor(LayoutParser):
         self.table_engine = PPStructure(lang=lang, recovery=True)
         self.texts = {}
         self.tables = {}
-        self.use_s3 = use_s3
-        self.s3handler = StorageHandler(s3_bucket_name, s3_bucket_key)
+        self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key)
         
 
     def table_extraction(self, img) -> Optional[str]:
@@ -180,9 +179,11 @@ class OCRProcessor(LayoutParser):
 class StorageHandler:
     def __init__(
         self,
+        use_s3: bool,
         bucket_name: str,
         bucket_key: str
     ) -> None:
+        self.use_s3 = use_s3
         self.bucket_name = bucket_name
         self.bucket_key = bucket_key
         self.s3_client = boto3.client(
