@@ -28,12 +28,12 @@ class OCRBase:
         else:
             self.read_pdf_scanned_doc()
 
-    def read_image(self):
+    def read_image(self) -> None:
         """ Read the image / scanned doc """
         logging.info("Reading the image")
         self.image_cv = cv2.imread(self.file_path)
 
-    def read_pdf_scanned_doc(self):
+    def read_pdf_scanned_doc(self) -> None:
         """ Read scanned pdf doc """
         logging.info("Reading the pdf file")
         page_imgs = convert_from_path(self.file_path)
@@ -55,7 +55,7 @@ class LayoutParser(OCRBase):
         label_map: Optional[dict]=None,
         enforce_cpu: bool=True,
         enable_mkldnn: bool=False
-    ):
+    ) -> Tuple[lp.Layout, lp.Layout]:
         """ Get the layout from the scanned doc or images """
         lp_model = lp.PaddleDetectionLayoutModel(
             config_path="lp://PubLayNet/ppyolov2_r50vd_dcn_365e_publaynet/config",
@@ -92,19 +92,22 @@ class OCRProcessor(LayoutParser):
         self.s3handler = StorageHandler(s3_bucket_name, s3_bucket_key)
         
 
-    def table_extraction(self, img):
+    def table_extraction(self, img) -> Optional[str]:
         """ Extract table contents and return the dataframe """
         tbl_contents = self.table_engine(img)
         height, width, _ = img.shape
         sorted_tbl_layout = sorted_layout_boxes(tbl_contents, width)
         try:
             if sorted_tbl_layout:
-                tbl_html_contents = sorted_tbl_layout[0]["res"]["html"]
-                df_html = pd.read_html(io.StringIO(tbl_html_contents))[0]
-                return df_html
+                try:
+                    tbl_html_contents = sorted_tbl_layout[0]["res"]["html"]
+                    #df_html = pd.read_html(io.StringIO(tbl_html_contents))[0]
+                    return tbl_html_contents
+                except (KeyError, IndexError):
+                    return None
         except (KeyError, IndexError):
             logging.warning("Table contents not found in html format.")
-        return pd.DataFrame()
+        return None
 
     
 
@@ -120,9 +123,9 @@ class OCRProcessor(LayoutParser):
                 x_2 = int(table_block["x_2"]) + 5
                 y_2 = int(table_block["y_2"]) + 5
                 crop_img = image[y_1:y_2, x_1:x_2]
-                tbl_df = self.table_extraction(crop_img)
-                if not tbl_df.empty:
-                    link = self.s3handler.get_s3_link_or_local_path(tbl_df, f"{page_num}_{idx}")
+                tbl_html_contents = self.table_extraction(crop_img)
+                if tbl_html_contents:
+                    link = self.s3handler.get_s3_link_or_local_path(tbl_html_contents, f"{page_num}_{idx}")
                     if "contents" not in self.tables:
                         self.tables["contents"] = []
                     self.tables["contents"].append({
@@ -156,7 +159,7 @@ class OCRProcessor(LayoutParser):
                         })
         return self.texts, self.tables
 
-    def handler(self):
+    def handler(self) -> list:
         """ OCR Processor """
         label_map = {0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
         results = []
@@ -179,7 +182,7 @@ class StorageHandler:
         self,
         bucket_name: str,
         bucket_key: str
-    ):
+    ) -> None:
         self.bucket_name = bucket_name
         self.bucket_key = bucket_key
         self.s3_client = boto3.client(
@@ -195,7 +198,7 @@ class StorageHandler:
         self,
         bucket_key: str,
         signed_url_expiry_secs: int=86400
-    ):
+    ) -> Optional[str]:
         """
         Generates a presigned url of the file stored in s3
         """
@@ -217,10 +220,10 @@ class StorageHandler:
         self,
         df: pd.DataFrame,
         tbl_filename: str
-    ):
-        """ Store contents in s3 """
-        if all([self.bucket_name, self.bucket_key, self.s3_client]):
-            merged_bucket_key = f"{self.bucket_key}/{tbl_filename}.csv"
+    ) -> Optional[str]:
+        """ Store contents in s3 or local disk and returns the path to that file """
+        if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
+            merged_bucket_key = f"{self.bucket_key}/{tbl_filename}.html"
             csv_buf = io.StringIO()
             df.to_csv(csv_buf, header=True, index=False)
             csv_buf.seek(0)
@@ -229,7 +232,7 @@ class StorageHandler:
                     Bucket=self.bucket_name,
                     Body=csv_buf.getvalue(),
                     Key=merged_bucket_key,
-                    ContentType="csv"
+                    ContentType="html"
                 )
                 logging.info("Successfully uploaded the document.")
             except ClientError as cexc:
@@ -239,6 +242,6 @@ class StorageHandler:
             return generated_url
         else:
             logging.info("Not enough info for S3 storage. Storing data in the local disk.")
-            output_filepath = f"./outputs/{tbl_filename}.csv"
+            output_filepath = f"./outputs/{tbl_filename}.html"
             df.to_csv(output_filepath, header=True, index=False)
             return output_filepath
