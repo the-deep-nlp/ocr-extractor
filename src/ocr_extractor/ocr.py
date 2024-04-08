@@ -219,23 +219,32 @@ class StorageHandler:
 
     def get_s3_link_or_local_path(
         self,
-        df: pd.DataFrame,
+        html_contents: str,
         tbl_filename: str
     ) -> Optional[str]:
         """ Store contents in s3 or local disk and returns the path to that file """
         if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
             merged_bucket_key = f"{self.bucket_key}/{tbl_filename}.html"
-            csv_buf = io.StringIO()
-            df.to_csv(csv_buf, header=True, index=False)
-            csv_buf.seek(0)
+            html_contents_bytes = bytes(html_contents, "utf-8")
+            html_contents_bytes_obj = io.BytesIO(html_contents_bytes)
             try:
-                self.s3_client.put_object(
-                    Bucket=self.bucket_name,
-                    Body=csv_buf.getvalue(),
-                    Key=merged_bucket_key,
-                    ContentType="html"
+                self.s3_client.upload_fileobj(
+                    html_contents_bytes_obj,
+                    self.bucket_key,
+                    f"{tbl_filename}.html",
+                    ExtraArgs={"ContentType": "html"}
                 )
-                logging.info("Successfully uploaded the document.")
+            # csv_buf = io.StringIO()
+            # df.to_csv(csv_buf, header=True, index=False)
+            # csv_buf.seek(0)
+            # try:
+            #     self.s3_client.put_object(
+            #         Bucket=self.bucket_name,
+            #         Body=csv_buf.getvalue(),
+            #         Key=merged_bucket_key,
+            #         ContentType="html"
+            #     )
+            #     logging.info("Successfully uploaded the document.")
             except ClientError as cexc:
                 logging.info("Error while uploading the document. %s", str(cexc))
                 return None
@@ -244,5 +253,7 @@ class StorageHandler:
         else:
             logging.info("Not enough info for S3 storage. Storing data in the local disk.")
             output_filepath = f"./outputs/{tbl_filename}.html"
-            df.to_csv(output_filepath, header=True, index=False)
+            with open(output_filepath) as file:
+                file.write(html_contents)
+            #df.to_csv(output_filepath, header=True, index=False)
             return output_filepath
