@@ -82,12 +82,13 @@ class OCRProcessor(LayoutParser):
         is_image: bool=True,
         use_s3: bool=False,
         s3_bucket_name: str=None,
-        s3_bucket_key: str=None
+        s3_bucket_key: str=None,
+        aws_region_name: str="us-east-1"
     ) -> None:
         super().__init__(file_path, is_image)
         self.ocr = PaddleOCR(lang=lang, recovery=True)
         self.table_engine = PPStructure(lang=lang, recovery=True)
-        self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key)
+        self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key, aws_region_name)
         
 
     def table_extraction(self, img) -> Optional[str]:
@@ -168,7 +169,7 @@ class OCRProcessor(LayoutParser):
         else: # pdf scanned file
             logging.info("Total number of pages: %s", len(self.pdf_pages))
             for idx, pdf_page in enumerate(self.pdf_pages):
-                logging.info("Scanning page number: %s", idx)
+                logging.info("Scanning page number: %s", idx+1)
                 text_b, table_b = self.process_layout(pdf_page, label_map=label_map)
                 texts_lst, tables_lst = self.process(pdf_page, text_b, table_b, page_num=idx+1)
                 text_results.append(texts_lst)
@@ -183,14 +184,15 @@ class StorageHandler:
         self,
         use_s3: bool,
         bucket_name: str,
-        bucket_key: str
+        bucket_key: str,
+        aws_region_name: str
     ) -> None:
         self.use_s3 = use_s3
         self.bucket_name = bucket_name
         self.bucket_key = bucket_key
         self.s3_client = boto3.client(
             "s3",
-            region_name="us-east-1",
+            region_name=aws_region_name,
             config=Config(
                 signature_version="s3v4",
                 s3={"addressing_style": "path"}
@@ -247,7 +249,7 @@ class StorageHandler:
             #         Key=merged_bucket_key,
             #         ContentType="html"
             #     )
-            #     logging.info("Successfully uploaded the document.")
+                logging.info("Successfully uploaded the document.")
             except ClientError as cexc:
                 logging.info("Error while uploading the document. %s", str(cexc))
                 return None
