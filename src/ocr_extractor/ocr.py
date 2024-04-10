@@ -1,6 +1,7 @@
 import io
 import logging
 import operator
+import json
 from typing import Tuple, Optional
 import cv2
 import pandas as pd
@@ -124,11 +125,11 @@ class OCRProcessor(LayoutParser):
                 crop_img = image[y_1:y_2, x_1:x_2]
                 tbl_html_contents = self.table_extraction(crop_img)
                 if tbl_html_contents:
-                    link = self.s3handler.get_s3_link_or_local_path(tbl_html_contents, f"{page_num}_{idx}")
+                    #link = self.s3handler.get_s3_link_or_local_path(tbl_html_contents, f"{page_num}_{idx}")
                     tables_lst.append({
                         "page_number": page_num,
                         "order": idx,
-                        "content_link": link  # can be None if error during url generation
+                        "content": tbl_html_contents
                     })
 
         if text_b:
@@ -157,19 +158,24 @@ class OCRProcessor(LayoutParser):
     def handler(self) -> list:
         """ OCR Processor """
         label_map = {0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
-        results = []
+        text_results = []
+        table_results = []
         if self.is_image:
             text_b, table_b = self.process_layout(self.image_cv, label_map=label_map)
-            result = self.process(self.image_cv, text_b, table_b)
-            results.append(result)
+            texts_lst, tables_lst = self.process(self.image_cv, text_b, table_b)
+            text_results.append(texts_lst)
+            table_results.append(tables_lst)
         else: # pdf scanned file
             logging.info("Total number of pages: %s", len(self.pdf_pages))
             for idx, pdf_page in enumerate(self.pdf_pages):
                 logging.info("Scanning page number: %s", idx)
                 text_b, table_b = self.process_layout(pdf_page, label_map=label_map)
-                result = self.process(pdf_page, text_b, table_b, page_num=idx)
-                results.append(result)
-        return results
+                texts_lst, tables_lst = self.process(pdf_page, text_b, table_b, page_num=idx+1)
+                text_results.append(texts_lst)
+                table_results.append(tables_lst)
+        text_results_link = self.s3handler.get_s3_link_or_local_path(json.dumps(text_results), "ocr_texts")
+        table_results_link = self.s3handler.get_s3_link_or_local_path(json.dumps(table_results), "ocr_tables")
+        return text_results_link, table_results_link
 
 
 class StorageHandler:
@@ -215,20 +221,21 @@ class StorageHandler:
 
     def get_s3_link_or_local_path(
         self,
-        html_contents: str,
-        tbl_filename: str
+        contents: str,
+        filename: str,
+        file_ext: str="json"
     ) -> Optional[str]:
         """ Store contents in s3 or local disk and returns the path to that file """
         if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
-            merged_bucket_key = f"{self.bucket_key}/{tbl_filename}.html"
-            html_contents_bytes = bytes(html_contents, "utf-8")
-            html_contents_bytes_obj = io.BytesIO(html_contents_bytes)
+            merged_bucket_key = f"{self.bucket_key}/{filename}.{file_ext}"
+            contents_bytes = bytes(contents, "utf-8")
+            contents_bytes_obj = io.BytesIO(contents_bytes)
             try:
                 self.s3_client.upload_fileobj(
-                    html_contents_bytes_obj,
+                    contents_bytes_obj,
                     self.bucket_name,
                     merged_bucket_key,
-                    ExtraArgs={"ContentType": "html"}
+                    ExtraArgs={"ContentType": file_ext}
                 )
             # csv_buf = io.StringIO()
             # df.to_csv(csv_buf, header=True, index=False)
@@ -248,8 +255,8 @@ class StorageHandler:
             return generated_url
         else:
             logging.info("Not enough info for S3 storage. Storing data in the local disk.")
-            output_filepath = f"./outputs/{tbl_filename}.html"
+            output_filepath = f"./outputs/{filename}.{file_ext}"
             with open(output_filepath, "w") as file:
-                file.write(html_contents)
+                file.write(contents)
             #df.to_csv(output_filepath, header=True, index=False)
             return output_filepath
