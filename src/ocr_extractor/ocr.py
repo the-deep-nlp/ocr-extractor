@@ -226,8 +226,8 @@ class StorageHandler:
             try:
                 self.s3_client.upload_fileobj(
                     html_contents_bytes_obj,
-                    self.bucket_key,
-                    f"{tbl_filename}.html",
+                    self.bucket_name,
+                    merged_bucket_key,
                     ExtraArgs={"ContentType": "html"}
                 )
             # csv_buf = io.StringIO()
