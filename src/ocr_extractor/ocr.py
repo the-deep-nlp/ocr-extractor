@@ -1,18 +1,21 @@
-import io
 import logging
 import operator
+import re
+import tempfile
 import json
+import random
 from typing import Tuple, Optional
 import cv2
 import pandas as pd
 import numpy as np
-import boto3
-from botocore.client import Config
-from botocore.exceptions import ClientError
+
 import layoutparser as lp
 from paddleocr import PaddleOCR, PPStructure
 from paddleocr.ppstructure.recovery.recovery_to_doc import sorted_layout_boxes
 from pdf2image import convert_from_path
+from html2excel import ExcelParser
+
+from ocr_extractor.storage import StorageHandler
 
 
 logging.getLogger().setLevel(logging.INFO)
@@ -24,6 +27,10 @@ class OCRBase:
         self.image_cv = None
         self.pdf_pages = None
         self.file_path = file_path
+        self.file_extension = re.search(
+            "(?i)\.(jpg|png|jpeg|gif)$",
+            file_path
+        )
         if self.is_image:
             self.read_image()
         else:
@@ -108,7 +115,6 @@ class OCRProcessor(LayoutParser):
             logging.warning("Table contents not found in html format.")
         return None
 
-    
 
     def process(self, image, text_b, table_b, page_num=1):
         """ Extracts the contents from images / scans """
@@ -126,11 +132,19 @@ class OCRProcessor(LayoutParser):
                 crop_img = image[y_1:y_2, x_1:x_2]
                 tbl_html_contents = self.table_extraction(crop_img)
                 if tbl_html_contents:
-                    #link = self.s3handler.get_s3_link_or_local_path(tbl_html_contents, f"{page_num}_{idx}")
+                    tempf = tempfile.NamedTemporaryFile()
+                    tempf.write(bytes(tbl_html_contents, "utf-8"))
+                    tempf.seek(0)
+                    excel_parser = ExcelParser(tempf.name)
+                    temp_filepath_output = f"/tmp/{random.randint(100, 1000)}_tempfile.xlsx"
+                    excel_parser.to_excel(temp_filepath_output)
+                    content_link = self.s3handler.get_s3_link_or_local_path_for_file(temp_filepath_output, f"{page_num}_{idx}", file_ext="xlsx")
+                    image_link = self.s3handler.get_s3_link_or_local_path_for_image(image, self.file_extension, f"{page_num}_{idx}")
                     tables_lst.append({
                         "page_number": page_num,
                         "order": idx,
-                        "content": tbl_html_contents
+                        "content_link": content_link,
+                        "image_link": image_link
                     })
 
         if text_b:
@@ -174,91 +188,8 @@ class OCRProcessor(LayoutParser):
                 texts_lst, tables_lst = self.process(pdf_page, text_b, table_b, page_num=idx+1)
                 text_results.append(texts_lst)
                 table_results.append(tables_lst)
-        text_results_link = self.s3handler.get_s3_link_or_local_path(json.dumps(text_results), "ocr_texts")
-        table_results_link = self.s3handler.get_s3_link_or_local_path(json.dumps(table_results), "ocr_tables")
-        return text_results_link, table_results_link
+        return text_results, table_results
 
 
-class StorageHandler:
-    def __init__(
-        self,
-        use_s3: bool,
-        bucket_name: str,
-        bucket_key: str,
-        aws_region_name: str
-    ) -> None:
-        self.use_s3 = use_s3
-        self.bucket_name = bucket_name
-        self.bucket_key = bucket_key
-        self.s3_client = boto3.client(
-            "s3",
-            region_name=aws_region_name,
-            config=Config(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"}
-            )
-        )
 
-    def generate_presigned_url(
-        self,
-        bucket_key: str,
-        signed_url_expiry_secs: int=86400
-    ) -> Optional[str]:
-        """
-        Generates a presigned url of the file stored in s3
-        """
-        try:
-            url = self.s3_client.generate_presigned_url(
-                ClientMethod="get_object",
-                Params={
-                    "Bucket": self.bucket_name,
-                    "Key": bucket_key
-                },
-                ExpiresIn=signed_url_expiry_secs
-            )
-        except ClientError as cexc:
-            logging.error("Error while generating presigned url %s", cexc)
-            return None
-        return url
 
-    def get_s3_link_or_local_path(
-        self,
-        contents: str,
-        filename: str,
-        file_ext: str="json"
-    ) -> Optional[str]:
-        """ Store contents in s3 or local disk and returns the path to that file """
-        if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
-            merged_bucket_key = f"{self.bucket_key}/{filename}.{file_ext}"
-            contents_bytes = bytes(contents, "utf-8")
-            contents_bytes_obj = io.BytesIO(contents_bytes)
-            try:
-                self.s3_client.upload_fileobj(
-                    contents_bytes_obj,
-                    self.bucket_name,
-                    merged_bucket_key,
-                    ExtraArgs={"ContentType": file_ext}
-                )
-            # csv_buf = io.StringIO()
-            # df.to_csv(csv_buf, header=True, index=False)
-            # csv_buf.seek(0)
-            # try:
-            #     self.s3_client.put_object(
-            #         Bucket=self.bucket_name,
-            #         Body=csv_buf.getvalue(),
-            #         Key=merged_bucket_key,
-            #         ContentType="html"
-            #     )
-                logging.info("Successfully uploaded the document.")
-            except ClientError as cexc:
-                logging.info("Error while uploading the document. %s", str(cexc))
-                return None
-            generated_url = self.generate_presigned_url(bucket_key=merged_bucket_key)
-            return generated_url
-        else:
-            logging.info("Not enough info for S3 storage. Storing data in the local disk.")
-            output_filepath = f"./outputs/{filename}.{file_ext}"
-            with open(output_filepath, "w") as file:
-                file.write(contents)
-            #df.to_csv(output_filepath, header=True, index=False)
-            return output_filepath
