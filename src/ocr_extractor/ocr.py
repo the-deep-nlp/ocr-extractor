@@ -2,11 +2,11 @@ import logging
 import operator
 import re
 import tempfile
-import json
 import random
+from enum import Enum
 from typing import Tuple, Optional
 import cv2
-import pandas as pd
+
 import numpy as np
 
 import layoutparser as lp
@@ -19,6 +19,11 @@ from ocr_extractor.storage import StorageHandler
 
 
 logging.getLogger().setLevel(logging.INFO)
+
+class ExtractionType(Enum):
+    TEXT_ONLY = 1
+    TABLE_ONLY = 2
+    TEXT_AND_TABLE = 3
 
 
 class OCRBase:
@@ -59,6 +64,7 @@ class LayoutParser(OCRBase):
     def process_layout(
         self,
         img,
+        extraction_type,
         threshold: float=0.5,
         label_map: Optional[dict]=None,
         enforce_cpu: bool=True,
@@ -74,9 +80,13 @@ class LayoutParser(OCRBase):
         )
 
         layout = lp_model.detect(img)
-
-        text_blocks = lp.Layout([b for b in layout if b.type in ["Text", "Title"]])
-        table_blocks = lp.Layout([b for b in layout if b.type=="Table"])
+        
+        text_blocks = lp.Layout([])
+        table_blocks = lp.Layout([])
+        if extraction_type in [ExtractionType.TEXT_ONLY.value, ExtractionType.TEXT_AND_TABLE.value]:
+            text_blocks = lp.Layout([b for b in layout if b.type in ["Text", "Title"]])
+        if extraction_type in [ExtractionType.TABLE_ONLY.value, ExtractionType.TEXT_AND_TABLE.value]:
+            table_blocks = lp.Layout([b for b in layout if b.type=="Table"])
         return text_blocks, table_blocks
 
 
@@ -87,13 +97,27 @@ class OCRProcessor(LayoutParser):
         file_path: str,
         lang: str='en',
         is_image: bool=True,
+        extraction_type: int=ExtractionType.TEXT_AND_TABLE.value,
         use_s3: bool=False,
         s3_bucket_name: str=None,
         s3_bucket_key: str=None,
         aws_region_name: str="us-east-1"
     ) -> None:
+        """
+        Extract contents from the document using OCR.
+
+        file_path: Path of the input file
+        lang: The language in which the document is written
+        is_image: Type of the document
+        extraction_type: Either extract text only or table only or both
+        use_s3: To check if s3 is used as storage
+        s3_bucket_name: Name of the bucket in s3
+        s3_bucket_key: Name of the key or file in s3
+        aws_region_name: The AWS region to be used.
+        """
         super().__init__(file_path, is_image)
         self.ocr = PaddleOCR(lang=lang, recovery=True)
+        self.extraction_type = extraction_type
         self.table_engine = PPStructure(lang=lang, recovery=True)
         self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key, aws_region_name)
         
@@ -176,7 +200,7 @@ class OCRProcessor(LayoutParser):
         text_results = []
         table_results = []
         if self.is_image:
-            text_b, table_b = self.process_layout(self.image_cv, label_map=label_map)
+            text_b, table_b = self.process_layout(self.image_cv, self.extraction_type, label_map=label_map)
             texts_lst, tables_lst = self.process(self.image_cv, text_b, table_b)
             text_results.append(texts_lst)
             table_results.append(tables_lst)
@@ -184,7 +208,7 @@ class OCRProcessor(LayoutParser):
             logging.info("Total number of pages: %s", len(self.pdf_pages))
             for idx, pdf_page in enumerate(self.pdf_pages):
                 logging.info("Scanning page number: %s", idx+1)
-                text_b, table_b = self.process_layout(pdf_page, label_map=label_map)
+                text_b, table_b = self.process_layout(pdf_page, self.extraction_type, label_map=label_map)
                 texts_lst, tables_lst = self.process(pdf_page, text_b, table_b, page_num=idx+1)
                 text_results.append(texts_lst)
                 table_results.append(tables_lst)
