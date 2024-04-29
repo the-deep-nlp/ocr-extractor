@@ -130,6 +130,8 @@ class OCRProcessor(LayoutParser):
         try:
             if sorted_tbl_layout:
                 try:
+                    if not sorted_tbl_layout[0]["type"] == "table":
+                        return None
                     tbl_html_contents = sorted_tbl_layout[0]["res"]["html"]
                     #df_html = pd.read_html(io.StringIO(tbl_html_contents))[0]
                     return tbl_html_contents
