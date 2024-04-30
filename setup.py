@@ -11,7 +11,7 @@ setup(
     include_package_data=True,
 
     install_requires=[
-        "numba",
+        "numba==0.59.1",
         "bce-python-sdk==0.9.5",
         "paddleocr==2.7.0.3",
         "paddlepaddle==2.6.0",
