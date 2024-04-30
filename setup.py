@@ -17,7 +17,7 @@ setup(
         "paddlepaddle==2.6.0",
         "pdf2image==1.17.0",
         "pandas==2.0.3",
-        "opencv-python==4.6.0.66",
+        "opencv-python-headless==4.9.0.80",
         "layoutparser@https://paddleocr.bj.bcebos.com/whl/layoutparser-0.0.0-py3-none-any.whl",
         "protocol",
         "sentry-sdk==1.5.8",
