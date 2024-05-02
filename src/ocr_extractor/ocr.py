@@ -125,7 +125,14 @@ class OCRProcessor(LayoutParser):
             layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer"
         )
         self.extraction_type = extraction_type
-        self.table_engine = PPStructure(lang=lang, recovery=True)
+        self.table_engine = PPStructure(
+            lang=lang,
+            recovery=True,
+            det_model_dir="/ocr/models/en_PP-OCRv3_det_infer",
+            table_model_dir="/ocr/models/en_ppstructure_mobile_v2.0_SLANet_infer",
+            rec_model_dir="/ocr/models/en_PP-OCRv4_rec_infer",
+            layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer"
+        )
         self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key, aws_region_name)
         
 
