@@ -72,7 +72,8 @@ class LayoutParser(OCRBase):
     ) -> Tuple[lp.Layout, lp.Layout]:
         """ Get the layout from the scanned doc or images """
         lp_model = lp.PaddleDetectionLayoutModel(
-            config_path="lp://PubLayNet/ppyolov2_r50vd_dcn_365e_publaynet/config",
+            #config_path="lp://test/PubLayNet/ppyolov2_r50vd_dcn_365e_publaynet/config",
+            model_path="/ocr/models/ppyolov2_r50vd_dcn_365e_publaynet",
             threshold=threshold,
             label_map=label_map,
             enforce_cpu=enforce_cpu,
