@@ -124,7 +124,7 @@ class OCRProcessor(LayoutParser):
             table_model_dir="/ocr/models/en_ppstructure_mobile_v2.0_SLANet_infer",
             rec_model_dir="/ocr/models/en_PP-OCRv4_rec_infer",
             layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer",
-            cls_model_dir=None
+            cls_model_dir="/ocr/models/ch_ppocr_mobile_v2.0_cls_infer"
         )
         self.extraction_type = extraction_type
         self.table_engine = PPStructure(
@@ -134,7 +134,7 @@ class OCRProcessor(LayoutParser):
             table_model_dir="/ocr/models/en_ppstructure_mobile_v2.0_SLANet_infer",
             rec_model_dir="/ocr/models/en_PP-OCRv4_rec_infer",
             layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer",
-            cls_model_dir=None
+            cls_model_dir="/ocr/models/ch_ppocr_mobile_v2.0_cls_infer"
         )
         self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key, aws_region_name)
         
