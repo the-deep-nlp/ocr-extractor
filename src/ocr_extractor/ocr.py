@@ -65,6 +65,7 @@ class LayoutParser(OCRBase):
         self,
         img,
         extraction_type,
+        model_path: str="/ocr/models/ppyolov2_r50vd_dcn_365e_publaynet",
         threshold: float=0.5,
         label_map: Optional[dict]=None,
         enforce_cpu: bool=True,
@@ -73,7 +74,7 @@ class LayoutParser(OCRBase):
         """ Get the layout from the scanned doc or images """
         lp_model = lp.PaddleDetectionLayoutModel(
             #config_path="lp://test/PubLayNet/ppyolov2_r50vd_dcn_365e_publaynet/config",
-            model_path="/ocr/models/ppyolov2_r50vd_dcn_365e_publaynet",
+            model_path=model_path,
             threshold=threshold,
             label_map=label_map,
             enforce_cpu=enforce_cpu,
@@ -102,7 +103,8 @@ class OCRProcessor(LayoutParser):
         use_s3: bool=False,
         s3_bucket_name: str=None,
         s3_bucket_key: str=None,
-        aws_region_name: str="us-east-1"
+        aws_region_name: str="us-east-1",
+        **kwargs
     ) -> None:
         """
         Extract contents from the document using OCR.
@@ -120,21 +122,23 @@ class OCRProcessor(LayoutParser):
         self.ocr = PaddleOCR(
             lang=lang,
             recovery=True,
-            det_model_dir="/ocr/models/en_PP-OCRv3_det_infer",
-            table_model_dir="/ocr/models/en_ppstructure_mobile_v2.0_SLANet_infer",
-            rec_model_dir="/ocr/models/en_PP-OCRv4_rec_infer",
-            layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer",
-            cls_model_dir="/ocr/models/ch_ppocr_mobile_v2.0_cls_infer"
+            **kwargs
+            # det_model_dir="/ocr/models/en_PP-OCRv3_det_infer",
+            # table_model_dir="/ocr/models/en_ppstructure_mobile_v2.0_SLANet_infer",
+            # rec_model_dir="/ocr/models/en_PP-OCRv4_rec_infer",
+            # layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer",
+            # cls_model_dir="/ocr/models/ch_ppocr_mobile_v2.0_cls_infer"
         )
         self.extraction_type = extraction_type
         self.table_engine = PPStructure(
             lang=lang,
             recovery=True,
-            det_model_dir="/ocr/models/en_PP-OCRv3_det_infer",
-            table_model_dir="/ocr/models/en_ppstructure_mobile_v2.0_SLANet_infer",
-            rec_model_dir="/ocr/models/en_PP-OCRv4_rec_infer",
-            layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer",
-            cls_model_dir="/ocr/models/ch_ppocr_mobile_v2.0_cls_infer"
+            **kwargs
+            # det_model_dir="/ocr/models/en_PP-OCRv3_det_infer",
+            # table_model_dir="/ocr/models/en_ppstructure_mobile_v2.0_SLANet_infer",
+            # rec_model_dir="/ocr/models/en_PP-OCRv4_rec_infer",
+            # layout_model_dir="/ocr/models/picodet_lcnet_x1_0_fgd_layout_infer",
+            # cls_model_dir="/ocr/models/ch_ppocr_mobile_v2.0_cls_infer"
         )
         self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key, aws_region_name)
         
