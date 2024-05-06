@@ -68,7 +68,10 @@ class StorageHandler:
         is_success, img_encoded_data = cv2.imencode(file_extension, image_data)
         io_buf = io.BytesIO(img_encoded_data)
 
-        merged_bucket_key = f"{filename}{file_extension}"
+        if self.bucket_key:
+            merged_bucket_key = f"{self.bucket_key}/{filename}{file_extension}"
+        else:
+            merged_bucket_key = f"{filename}{file_extension}"
 
         try:
             self.s3_client.upload_fileobj(
@@ -91,7 +94,10 @@ class StorageHandler:
         file_ext: str="xlsx"
     ):
         """ Store excel file in s3 or local disk and returns the path to that file """
-        merged_bucket_key = f"{filename}.{file_ext}"
+        if self.bucket_key:
+            merged_bucket_key = f"{self.bucket_key}/{filename}.{file_ext}"
+        else:
+            merged_bucket_key = f"{filename}.{file_ext}"
         try:
             self.s3_client.upload_file(
                 src_filename,
