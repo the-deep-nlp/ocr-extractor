@@ -5,7 +5,8 @@ import tempfile
 import random
 from enum import Enum
 from typing import Tuple, Optional
-import cv2
+#import cv2
+from PIL import Image
 
 import numpy as np
 
@@ -44,7 +45,8 @@ class OCRBase:
     def read_image(self) -> None:
         """ Read the image / scanned doc """
         logging.info("Reading the image")
-        self.image_cv = cv2.imread(self.file_path)
+        #self.image_cv = cv2.imread(self.file_path)
+        self.image_cv = np.array(Image.open(self.file_path))
 
     def read_pdf_scanned_doc(self) -> None:
         """ Read scanned pdf doc """
