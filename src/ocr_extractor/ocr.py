@@ -136,6 +136,7 @@ class OCRProcessor(OCRBase):
 
         try:
             results = self.ocr_engine(image_data)
+            print(results)
         except Exception as exc:
             logging.error(f"Exception occurred {str(exc)}", exc_info=True)
             return # TODO
@@ -145,16 +146,18 @@ class OCRProcessor(OCRBase):
         text_sort_number = 0
         table_sort_number = 0
         for element in sorted_results:
-            if (element["type"] == "text" and
+            if (element["type"] in ["text", "figure"] and
                 self.extraction_type in [
                     ExtractionType.TEXT_ONLY.value,
                     ExtractionType.TEXT_AND_TABLE.value
                 ]
             ):
+                print("Entered")
+                print(element)
                 texts = ""
                 for t in element.get("res", []):
                     texts += t["text"] + " "
-                self.final_combined_results[element["type"]].append({
+                self.final_combined_results["text"].append({
                     "page_number": page_number,
                     "order": text_sort_number,
                     "content": texts.strip()
