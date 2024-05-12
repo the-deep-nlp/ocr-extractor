@@ -200,10 +200,9 @@ class OCRProcessor(OCRBase):
         if self.is_image:
             image_data = self.read_image()
             self.process(image_data)
-            logging.info(self.final_combined_results)
-
         else:
             for page_num, image_data in self.read_pdf_scanned_doc():
                 logging.info("Processing page number %s.", page_num)
                 self.process(image_data=image_data, page_number=page_num)
-            logging.info(self.final_combined_results)
+
+        return self.final_combined_results
