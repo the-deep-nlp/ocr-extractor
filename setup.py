@@ -11,16 +11,9 @@ setup(
     include_package_data=True,
 
     install_requires=[
-        "numba==0.56.4",
         "bce-python-sdk==0.9.5",
         "paddleocr==2.7.0.3",
         "paddlepaddle==2.6.0",
-        "pdf2image==1.17.0",
-        "pandas==2.0.3",
-        "opencv-python-headless",
-        "layoutparser@https://paddleocr.bj.bcebos.com/whl/layoutparser-0.0.0-py3-none-any.whl",
-        "protocol",
-        "sentry-sdk==1.5.8",
         "boto3==1.26.106",
         "html2excel==0.0.6"
         ],
