@@ -136,7 +136,6 @@ class OCRProcessor(OCRBase):
 
         try:
             results = self.ocr_engine(image_data)
-            print(results)
         except Exception as exc:
             logging.error(f"Exception occurred {str(exc)}", exc_info=True)
             return # TODO
@@ -152,8 +151,6 @@ class OCRProcessor(OCRBase):
                     ExtractionType.TEXT_AND_TABLE.value
                 ]
             ):
-                print("Entered")
-                print(element)
                 texts = ""
                 for t in element.get("res", []):
                     texts += t["text"] + " "
