@@ -24,11 +24,17 @@ class ExtractionType(Enum):
 
 class OCRBase:
     """ OCR module for extracting texts and tables """
-    def __init__(self, file_path: str, is_image: bool) -> None:
-        self.is_image = is_image
+    def __init__(self):
+        self.file_path = None
+        self.is_image = True
+        self.img_file_extension = None
         self.image_data = None
         self.pdf_pages = None
+
+    def load_file(self, file_path: str, is_image: bool):
+        """ Set the file path """
         self.file_path = file_path
+        self.is_image = is_image
         self.img_file_extension = re.search(
             "(?i)\.(jpg|png|jpeg|gif)$",
             file_path
@@ -65,10 +71,8 @@ class OCRProcessor(OCRBase):
     """ OCR Processor """
     def __init__(
         self,
-        file_path: str,
         lang: str="en",
         precision: str="fp16",
-        is_image: bool=True,
         extraction_type: int=ExtractionType.TEXT_AND_TABLE.value,
         show_log: bool=True,
         layout: bool=True,
@@ -97,7 +101,7 @@ class OCRProcessor(OCRBase):
         aws_region_name: The AWS region to be used.
         """
 
-        super().__init__(file_path, is_image)
+        super().__init__()
         self.extraction_type = extraction_type
 
         if self.extraction_type == ExtractionType.TEXT_ONLY.value:
