@@ -13,7 +13,7 @@ setup(
     install_requires=[
         "bce-python-sdk==0.9.5",
         "paddleocr==2.7.0.3",
-        "paddlepaddle==2.6.0",
+        "paddlepaddle==2.5.2",
         "boto3==1.26.106",
         "html2excel==0.0.6"
         ],
