@@ -15,7 +15,8 @@ setup(
         "paddleocr==2.7.0.3",
         "paddlepaddle==2.6.1",
         "boto3==1.26.106",
-        "html2excel==0.0.6"
+        "html2excel==0.0.6",
+        "aiofiles==23.2.1"
         ],
 
     author="Ranjan Shrestha",

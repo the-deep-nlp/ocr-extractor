@@ -5,10 +5,12 @@ import tempfile
 import random
 from enum import Enum
 from typing import Tuple, Generator, Optional
+import asyncio
 from PIL import Image
 
 import fitz
 import numpy as np
+import aiofiles
 from paddleocr import PPStructure
 from html2excel import ExcelParser
 from ocr_extractor.storage import StorageHandler
@@ -40,11 +42,13 @@ class OCRBase:
             file_path
         )
 
-    def read_image(self) -> Optional[np.ndarray]:
+    async def read_image(self) -> Optional[np.ndarray]:
         """ Read the image / scanned doc """
         logging.info("Reading the image")
         if os.path.isfile(self.file_path):
-            return np.array(Image.open(self.file_path))
+            loop = asyncio.get_running_loop()
+            img = await loop.run_in_executor(None, Image.open, self.file_path)
+            return np.array(img)
         logging.warning("Cannot open the image file %s", self.file_path)
         return None
 
@@ -132,7 +136,7 @@ class OCRProcessor(OCRBase):
             "table": []
         }
 
-    def process(self, image_data: np.ndarray, page_number: int=0):
+    async def process(self, image_data: np.ndarray, page_number: int=0):
         """ Extracts the contents from images or scans """
 
         try:
@@ -170,11 +174,11 @@ class OCRProcessor(OCRBase):
             ):
                 if "html" in element.get("res", []):
                     tbl_html_contents = element["res"]["html"]
-                    with tempfile.NamedTemporaryFile() as tempf:
-                        tempf.write(bytes(tbl_html_contents, "utf-8"))
-                        tempf.seek(0)
+                    async with aiofiles.tempfile.NamedTemporaryFile("wb+") as tempf:
+                        await tempf.write(bytes(tbl_html_contents, "utf-8"))
+                        await tempf.seek(0)
                         excel_parser = ExcelParser(tempf.name)
-                        temp_filepath_output = f"/tmp/{random.randint(100, 1000)}_tempfile.xlsx"
+                        temp_filepath_output = f"/tmp/excel_{random.randint(100, 10_000)}_tempfile.xlsx"
                         excel_parser.to_excel(temp_filepath_output)
                     content_link = self.s3handler.get_s3_link_or_local_path_for_file(
                         temp_filepath_output,
@@ -196,14 +200,14 @@ class OCRProcessor(OCRBase):
                 else:
                     logging.warning("Table was detected but contents could not be retrived.")
 
-    def handler(self) -> dict:
+    async def handler(self) -> dict:
         """ OCR handler for image or pdf file """
         if self.is_image:
-            image_data = self.read_image()
-            self.process(image_data)
+            image_data = await self.read_image()
+            await self.process(image_data)
         else:
             for page_num, image_data in self.read_pdf_scanned_doc():
                 logging.info("Processing page number %s.", page_num)
-                self.process(image_data=image_data, page_number=page_num)
+                await self.process(image_data=image_data, page_number=page_num)
 
         return self.final_combined_results
