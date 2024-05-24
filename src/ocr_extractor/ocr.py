@@ -46,8 +46,7 @@ class OCRBase:
         """ Read the image / scanned doc """
         logging.info("Reading the image")
         if os.path.isfile(self.file_path):
-            #loop = asyncio.get_running_loop()
-            img = Image.open(self.file_path) #await loop.run_in_executor(None, Image.open, self.file_path)
+            img = Image.open(self.file_path).convert('RGB')
             return np.array(img)
         logging.warning("Cannot open the image file %s", self.file_path)
         return None
@@ -202,6 +201,11 @@ class OCRProcessor(OCRBase):
 
     async def handler(self) -> dict:
         """ OCR handler for image or pdf file """
+        self.final_combined_results = {
+            "text": [],
+            "table": []
+        }
+
         if self.is_image:
             image_data = self.read_image()
             await self.process(image_data)
