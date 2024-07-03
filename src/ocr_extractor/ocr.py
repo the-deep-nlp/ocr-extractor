@@ -22,6 +22,7 @@ class ExtractionType(Enum):
     TEXT_ONLY = 1
     TABLE_ONLY = 2
     TEXT_AND_TABLE = 3
+    IMAGE_AND_TABLE = 4
 
 
 class OCRBase:
@@ -116,6 +117,9 @@ class OCRProcessor(OCRBase):
         if self.extraction_type == ExtractionType.TEXT_AND_TABLE.value:
             process_text = True
             process_table = True
+        if self.extraction_type == ExtractionType.IMAGE_AND_TABLE.value:
+            process_text = True
+            process_table = True
 
         self.ocr_engine = PPStructure(
             show_log=show_log,
@@ -132,6 +136,7 @@ class OCRProcessor(OCRBase):
 
         self.final_combined_results = {
             "text": [],
+            "image": [],
             "table": []
         }
 
@@ -149,7 +154,22 @@ class OCRProcessor(OCRBase):
         sorted_results = sorted(results, key=lambda x: (x["bbox"][1], x["bbox"][0]))
         text_sort_number = 0
         table_sort_number = 0
-        for element in sorted_results:
+        extracted_images = []
+
+        for idx, element in enumerate(sorted_results):
+            if (element["type"] in ["figure"] and
+                self.extraction_type in [
+                    ExtractionType.IMAGE_AND_TABLE.value
+                ]
+            ):
+                image_link = self.s3handler.get_s3_link_or_local_path_for_image(
+                    element["img"],
+                    self.img_file_extension,
+                    f"{page_number}_{idx}",
+                    "images"
+                )
+                extracted_images.append(image_link)
+
             if (element["type"] in ["text", "figure"] and
                 self.extraction_type in [
                     ExtractionType.TEXT_ONLY.value,
@@ -168,7 +188,8 @@ class OCRProcessor(OCRBase):
             if (element["type"] == "table" and
                 self.extraction_type in [
                     ExtractionType.TABLE_ONLY.value,
-                    ExtractionType.TEXT_AND_TABLE.value
+                    ExtractionType.TEXT_AND_TABLE.value,
+                    ExtractionType.IMAGE_AND_TABLE.value
                 ]
             ):
                 if "html" in element.get("res", []):
@@ -187,7 +208,8 @@ class OCRProcessor(OCRBase):
                     image_link = self.s3handler.get_s3_link_or_local_path_for_image(
                         element["img"],
                         self.img_file_extension,
-                        f"{page_number}_{table_sort_number}"
+                        f"{page_number}_{table_sort_number}",
+                        "tables"
                     )
                     self.final_combined_results[element["type"]].append({
                         "page_number": page_number,
@@ -198,11 +220,17 @@ class OCRProcessor(OCRBase):
                     table_sort_number += 1
                 else:
                     logging.warning("Table was detected but contents could not be retrived.")
+        if extracted_images:
+            self.final_combined_results["image"].append({
+                "page_number": page_number,
+                "images": extracted_images
+            })
 
     async def handler(self) -> dict:
         """ OCR handler for image or pdf file """
         self.final_combined_results = {
             "text": [],
+            "image": [],
             "table": []
         }
 
