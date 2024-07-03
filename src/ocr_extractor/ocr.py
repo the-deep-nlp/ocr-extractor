@@ -173,7 +173,8 @@ class OCRProcessor(OCRBase):
             if (element["type"] in ["text", "figure"] and
                 self.extraction_type in [
                     ExtractionType.TEXT_ONLY.value,
-                    ExtractionType.TEXT_AND_TABLE.value
+                    ExtractionType.TEXT_AND_TABLE.value,
+                    ExtractionType.IMAGE_AND_TABLE.value
                 ]
             ):
                 texts = ""
