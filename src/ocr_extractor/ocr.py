@@ -1,11 +1,9 @@
 import os
 import logging
 import re
-import tempfile
 import random
 from enum import Enum
 from typing import Tuple, Generator, Optional
-import asyncio
 from PIL import Image
 
 import fitz
@@ -14,6 +12,7 @@ import aiofiles
 from paddleocr import PPStructure
 from html2excel import ExcelParser
 from ocr_extractor.storage import StorageHandler
+from ocr_extractor.utils import get_ocr_models
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -121,6 +120,7 @@ class OCRProcessor(OCRBase):
             process_text = True
             process_table = True
 
+        ocr_models = get_ocr_models()
         self.ocr_engine = PPStructure(
             show_log=show_log,
             precision=precision,
@@ -129,7 +129,7 @@ class OCRProcessor(OCRBase):
             lang=lang,
             layout=layout,
             recovery=True,
-            **kwargs
+            **ocr_models
         )
 
         self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key, aws_region_name)
