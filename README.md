@@ -4,6 +4,16 @@ This OCR module is intended to retrieve the texts, tables from the images or pdf
 This library employs several models for detection, recognition, layout parsing, just to name a few.
 Based on this library, we wrote a wrapper to process the documents.
 
+## Installation
+
+It can be installed using pip.
+
+```
+pip install https+git@github.com:the-deep-nlp/ocr-extractor.git
+```
+
+## Usages
+
 The OCRProcessor class can be used as follows:
 
 ```
