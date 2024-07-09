@@ -56,7 +56,8 @@ class StorageHandler:
         self,
         image_data,
         file_extension,
-        filename: str
+        filename: str,
+        dir_type: str
     ):
         """ Store image file in s3 or local disk and returns the path to that file """
         mapper = {
@@ -76,7 +77,7 @@ class StorageHandler:
 
         if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
             if self.bucket_key:
-                merged_bucket_key = f"{self.bucket_key}/{filename}{file_extension}"
+                merged_bucket_key = f"{self.bucket_key}/{dir_type}/{filename}{file_extension}"
             else:
                 merged_bucket_key = f"{filename}{file_extension}"
 
