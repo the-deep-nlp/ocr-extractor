@@ -6,7 +6,7 @@ from ocr_extractor.wget import download
 
 logging.getLogger().setLevel(logging.INFO)
 
-def get_ocr_models(base_path: str="/ocr/models/"):
+def get_ocr_models(base_path: str):
     """ Get OCR models"""
     model_urls = [
         "https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar",
@@ -34,17 +34,16 @@ def get_ocr_models(base_path: str="/ocr/models/"):
         "layout_model_dir": base_path + "picodet_lcnet_x1_0_fgd_layout_infer"
     }
 
-    models_path = base_path
-    if not os.path.exists(models_path):
-        os.makedirs(models_path)
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
 
         for url in model_urls:
             logging.info("Downloading the model %s", url)
-            download(url=url, out=models_path)
+            download(url=url, out=base_path)
 
         for tar_file in tar_files:
-            with tarfile.open(f"{models_path}/{tar_file}") as tar:
-                tar.extractall(models_path)
+            with tarfile.open(f"{base_path}/{tar_file}") as tar:
+                tar.extractall(base_path)
     else:
         logging.info("OCR models path exist.")
     return file_paths

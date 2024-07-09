@@ -85,6 +85,7 @@ class OCRProcessor(OCRBase):
         process_text: bool=True,
         process_table: bool=True,
         aws_region_name: str="us-east-1",
+        models_base_path: str="/ocr/models/",
         **kwargs
     ) -> None:
         """
@@ -120,7 +121,7 @@ class OCRProcessor(OCRBase):
             process_text = True
             process_table = True
 
-        ocr_models = get_ocr_models()
+        ocr_models = get_ocr_models(base_path=models_base_path)
         self.ocr_engine = PPStructure(
             show_log=show_log,
             precision=precision,

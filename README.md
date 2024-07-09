@@ -19,6 +19,7 @@ ocr_processor = OCRProcessor(
     process_text: boolean -> To extract text contents from the images / scanned document (default: True)  
     process_table: boolean -> To extract the tables from the images / pdf / scanned document (default: True)  
     aws_region_name: str -> AWS region (default: 'us-east-1')  
+    models_base_path: str -> local location of the models  (default: '/ocr/models/')
 )
 
 ocr_processor.load_file(
