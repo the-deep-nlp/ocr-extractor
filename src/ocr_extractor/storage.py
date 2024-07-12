@@ -1,7 +1,8 @@
 import os
 import io
 import logging
-from typing import Optional
+from pathlib import Path, PosixPath
+from typing import Optional, Union
 from PIL import Image
 import boto3
 from botocore.client import Config
@@ -58,35 +59,33 @@ class StorageHandler:
         file_extension,
         filename: str,
         dir_type: str
-    ):
+    ) -> Union[PosixPath, str]:
         """ Store image file in s3 or local disk and returns the path to that file """
         mapper = {
-            ".png": "image/png",
-            ".jpg": "image/jpg",
-            ".jpeg": "image/jpg",
-            ".gif": "image/gif"
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "gif": "image/gif"
         }
-        file_extension = file_extension.group() if file_extension else ".jpg"
-        file_ext = mapper.get(file_extension, "image/jpg") if file_extension else "image/jpg"
+        file_extension = file_extension.group(1) if file_extension else "jpeg"
+        if file_extension == "jpg":
+            file_extension = "jpeg"
+        image_content_type = mapper[file_extension] if file_extension else "image/jpeg"
 
         img = Image.fromarray(image_data)
         buffer = io.BytesIO()
 
-        img.save(buffer, format="png")
+        img.save(buffer, format=file_extension)
         buffer.seek(0,0)
 
         if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
-            if self.bucket_key:
-                merged_bucket_key = f"{self.bucket_key}/{dir_type}/{filename}{file_extension}"
-            else:
-                merged_bucket_key = f"{filename}{file_extension}"
-
+            merged_bucket_key = f"{self.bucket_key}/{dir_type}/{filename}.{file_extension}"
             try:
                 self.s3_client.put_object(
                     Bucket=self.bucket_name,
                     Key=merged_bucket_key,
                     Body=buffer,
-                    ContentType="image/png"
+                    ContentType=image_content_type
                 )
                 logging.info("Successfully uploaded the image to s3.")
             except ClientError as cexc:
@@ -94,32 +93,30 @@ class StorageHandler:
                 return None
             generated_url = self.generate_presigned_url(bucket_key=merged_bucket_key)
             return generated_url
-        else:
-            fpath = "/tmp/images"
-            os.makedirs(fpath, exist_ok=True)
-            img_fpath = f"{fpath}/{filename}{file_extension}"
-            img = Image.fromarray(image_data)
-            img.save(img_fpath)
-            return img_fpath
+
+        fpath = Path("/tmp/images")
+        os.makedirs(fpath, exist_ok=True)
+        img_fpath = fpath / f"{filename}.{file_extension}"
+        img = Image.fromarray(image_data)
+        img.save(img_fpath)
+        return img_fpath
 
     def get_s3_link_or_local_path_for_file(
         self,
         src_filename,
         filename: str,
-        file_ext: str="xlsx"
+        file_ext: str="xlsx",
+        content_type: str="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     ):
         """ Store excel file in s3 or local disk and returns the path to that file """
         if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
-            if self.bucket_key:
-                merged_bucket_key = f"{self.bucket_key}/{filename}.{file_ext}"
-            else:
-                merged_bucket_key = f"{filename}.{file_ext}"
+            merged_bucket_key = f"{self.bucket_key}/{filename}.{file_ext}"
             try:
                 self.s3_client.upload_file(
                     src_filename,
                     Bucket=self.bucket_name,
                     Key=merged_bucket_key,
-                    ExtraArgs={"ContentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+                    ExtraArgs={"ContentType": content_type}
                 )
                 logging.info("Successfully uploaded the excel file to s3.")
             except ClientError as cexc:
@@ -127,38 +124,6 @@ class StorageHandler:
                 return None
             generated_url = self.generate_presigned_url(bucket_key=merged_bucket_key)
             return generated_url
-        else:
-            logging.info("Not enough info for S3 storage. Using the local disk.")
-            return src_filename
 
-
-    def get_s3_link_or_local_path(
-        self,
-        contents: str,
-        filename: str,
-        file_ext: str="json"
-    ) -> Optional[str]:
-        """ Store contents in s3 or local disk and returns the path to that file """
-        if all([self.use_s3, self.bucket_name, self.bucket_key, self.s3_client]):
-            merged_bucket_key = f"{filename}.{file_ext}"
-            contents_bytes = bytes(contents, "utf-8")
-            contents_bytes_obj = io.BytesIO(contents_bytes)
-            try:
-                self.s3_client.upload_fileobj(
-                    contents_bytes_obj,
-                    self.bucket_name,
-                    merged_bucket_key,
-                    ExtraArgs={"ContentType": file_ext}
-                )
-                logging.info("Successfully uploaded the document.")
-            except ClientError as cexc:
-                logging.info("Error while uploading the document. %s", str(cexc))
-                return None
-            generated_url = self.generate_presigned_url(bucket_key=merged_bucket_key)
-            return generated_url
-        else:
-            logging.info("Not enough info for S3 storage. Using the local disk.")
-            output_filepath = f"./outputs/{filename}.{file_ext}"
-            with open(output_filepath, "w", encoding="utf-8") as file:
-                file.write(contents)
-            return output_filepath
+        logging.info("Not enough info for S3 storage. Using the local disk.")
+        return src_filename

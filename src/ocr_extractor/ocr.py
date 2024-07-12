@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import random
+from pathlib import Path, PosixPath
 from enum import Enum
 from typing import Tuple, Generator, Optional
 from PIL import Image
@@ -85,7 +86,7 @@ class OCRProcessor(OCRBase):
         process_text: bool=True,
         process_table: bool=True,
         aws_region_name: str="us-east-1",
-        models_base_path: str="/ocr/models/",
+        models_base_path: PosixPath=Path("/ocr/models"),
         **kwargs
     ) -> None:
         """
@@ -169,7 +170,7 @@ class OCRProcessor(OCRBase):
                     f"{page_number}_{idx}",
                     "images"
                 )
-                extracted_images.append(image_link)
+                extracted_images.append(str(image_link))
 
             if (element["type"] in ["text", "figure"] and
                 self.extraction_type in [
@@ -200,7 +201,7 @@ class OCRProcessor(OCRBase):
                         await tempf.write(bytes(tbl_html_contents, "utf-8"))
                         await tempf.seek(0)
                         excel_parser = ExcelParser(tempf.name)
-                        temp_filepath_output = f"/tmp/excel_{random.randint(100, 10_000)}_tempfile.xlsx"
+                        temp_filepath_output = Path(f"/tmp/excel_{random.randint(100, 10_000)}_tempfile.xlsx")
                         excel_parser.to_excel(temp_filepath_output)
                     content_link = self.s3handler.get_s3_link_or_local_path_for_file(
                         temp_filepath_output,
@@ -217,7 +218,7 @@ class OCRProcessor(OCRBase):
                         "page_number": page_number,
                         "order": table_sort_number,
                         "content_link": content_link,
-                        "image_link": image_link
+                        "image_link": str(image_link)
                     })
                     table_sort_number += 1
                 else:
