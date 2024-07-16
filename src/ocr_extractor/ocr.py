@@ -15,6 +15,8 @@ from html2excel import ExcelParser
 from ocr_extractor.storage import StorageHandler
 from ocr_extractor.utils import get_ocr_models
 
+from ocr_extractor.utils import filter_image_by_size
+
 logging.getLogger().setLevel(logging.INFO)
 
 class ExtractionType(Enum):
@@ -23,6 +25,8 @@ class ExtractionType(Enum):
     TABLE_ONLY = 2
     TEXT_AND_TABLE = 3
     IMAGE_AND_TABLE = 4
+    IMAGE_TABLE_COORDINATES = 5
+    ALL = 6
 
 
 class OCRBase:
@@ -78,7 +82,7 @@ class OCRProcessor(OCRBase):
         lang: str="en",
         precision: str="fp16",
         extraction_type: int=ExtractionType.TEXT_AND_TABLE.value,
-        show_log: bool=True,
+        show_log: bool=False,
         layout: bool=True,
         use_s3: bool=False,
         s3_bucket_name: str=None,
@@ -86,7 +90,7 @@ class OCRProcessor(OCRBase):
         process_text: bool=True,
         process_table: bool=True,
         aws_region_name: str="us-east-1",
-        models_base_path: PosixPath=Path("/ocr/models"),
+        models_base_path: PosixPath=Path("/tmp/models"),
         **kwargs
     ) -> None:
         """
@@ -137,9 +141,10 @@ class OCRProcessor(OCRBase):
         self.s3handler = StorageHandler(use_s3, s3_bucket_name, s3_bucket_key, aws_region_name)
 
         self.final_combined_results = {
-            "text": [],
-            "image": [],
-            "table": []
+            "texts": [],
+            "images": [],
+            "tables": [],
+            "rect_coordinates": []
         }
 
     async def process(self, image_data: np.ndarray, page_number: int=0):
@@ -148,8 +153,7 @@ class OCRProcessor(OCRBase):
         try:
             results = self.ocr_engine(image_data)
         except Exception as exc:
-            # TODO handle exception
-            logging.error(f"Exception occurred {str(exc)}", exc_info=True)
+            logging.error("Exception occurred %s", str(exc), exc_info=True)
             return
 
         # Sort boxes based on y1 and x1 : bbox top left coordinates
@@ -157,32 +161,46 @@ class OCRProcessor(OCRBase):
         text_sort_number = 0
         table_sort_number = 0
         extracted_images = []
+        element_rect_coordinates = []
 
         for idx, element in enumerate(sorted_results):
-            if (element["type"] in ["figure"] and
+            if (element["type"] in ["figure", "table"] and
                 self.extraction_type in [
-                    ExtractionType.IMAGE_AND_TABLE.value
+                    ExtractionType.IMAGE_TABLE_COORDINATES.value,
+                    ExtractionType.ALL.value
                 ]
             ):
-                image_link = self.s3handler.get_s3_link_or_local_path_for_image(
-                    element["img"],
-                    self.img_file_extension,
-                    f"{page_number}_{idx}",
-                    "images"
-                )
-                extracted_images.append(str(image_link))
+                element_rect_coordinates.append({
+                    "page_number": page_number,
+                    "type": element["type"],
+                    "bbox": element["bbox"]
+                })
+            if (element["type"] in ["figure"] and
+                self.extraction_type in [
+                    ExtractionType.IMAGE_AND_TABLE.value,
+                    ExtractionType.ALL.value
+                ]
+            ):
+                if filter_image_by_size(element["img"]):
+                    image_link = self.s3handler.get_s3_link_or_local_path_for_image(
+                        element["img"],
+                        self.img_file_extension,
+                        f"{page_number}_{idx}",
+                        "images"
+                    )
+                    extracted_images.append(str(image_link))
 
             if (element["type"] in ["text", "figure"] and
                 self.extraction_type in [
                     ExtractionType.TEXT_ONLY.value,
-                    ExtractionType.TEXT_AND_TABLE.value,
-                    ExtractionType.IMAGE_AND_TABLE.value
+                    ExtractionType.IMAGE_AND_TABLE.value,
+                    ExtractionType.ALL.value
                 ]
             ):
                 texts = ""
                 for t in element.get("res", []):
                     texts += t["text"] + " "
-                self.final_combined_results["text"].append({
+                self.final_combined_results["texts"].append({
                     "page_number": page_number,
                     "order": text_sort_number,
                     "content": texts.strip()
@@ -192,7 +210,8 @@ class OCRProcessor(OCRBase):
                 self.extraction_type in [
                     ExtractionType.TABLE_ONLY.value,
                     ExtractionType.TEXT_AND_TABLE.value,
-                    ExtractionType.IMAGE_AND_TABLE.value
+                    ExtractionType.IMAGE_AND_TABLE.value,
+                    ExtractionType.ALL.value
                 ]
             ):
                 if "html" in element.get("res", []):
@@ -214,27 +233,30 @@ class OCRProcessor(OCRBase):
                         f"{page_number}_{table_sort_number}",
                         "tables"
                     )
-                    self.final_combined_results[element["type"]].append({
+                    self.final_combined_results["tables"].append({
                         "page_number": page_number,
                         "order": table_sort_number,
-                        "content_link": content_link,
+                        "content_link": str(content_link),
                         "image_link": str(image_link)
                     })
                     table_sort_number += 1
                 else:
                     logging.warning("Table was detected but contents could not be retrived.")
         if extracted_images:
-            self.final_combined_results["image"].append({
+            self.final_combined_results["images"].append({
                 "page_number": page_number,
                 "images": extracted_images
             })
+        if element_rect_coordinates:
+            self.final_combined_results["rect_coordinates"].append(element_rect_coordinates)
 
     async def handler(self) -> dict:
         """ OCR handler for image or pdf file """
         self.final_combined_results = {
-            "text": [],
-            "image": [],
-            "table": []
+            "texts": [],
+            "images": [],
+            "tables": [],
+            "rect_coordinates": []
         }
 
         if self.is_image:

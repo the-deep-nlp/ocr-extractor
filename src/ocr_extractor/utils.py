@@ -1,7 +1,11 @@
 import os
+import io
 import tarfile
 import logging
 from pathlib import Path, PosixPath
+from PIL import Image
+import numpy as np
+
 from ocr_extractor.wget import download
 
 logging.getLogger().setLevel(logging.INFO)
@@ -49,3 +53,12 @@ def get_ocr_models(base_path: PosixPath):
     return {
         k: str(v) for k, v in file_paths.items()
     }
+
+
+def filter_image_by_size(image_array: np.ndarray, default_size: int=100_000):
+    """ Compares the image size with the default one """
+    buffer = io.BytesIO()
+    image = Image.fromarray(image_array)
+    image.save(buffer, format="jpeg")
+    size_in_kb = buffer.getbuffer().nbytes
+    return size_in_kb >= default_size
