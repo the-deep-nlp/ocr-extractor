@@ -119,10 +119,11 @@ class OCRProcessor(OCRBase):
         if self.extraction_type == ExtractionType.TABLE_ONLY.value:
             process_text = False
             process_table = True
-        if self.extraction_type == ExtractionType.TEXT_AND_TABLE.value:
-            process_text = True
-            process_table = True
-        if self.extraction_type == ExtractionType.IMAGE_AND_TABLE.value:
+        if self.extraction_type in [
+            ExtractionType.TEXT_AND_TABLE.value,
+            ExtractionType.IMAGE_AND_TABLE.value,
+            ExtractionType.ALL.value
+        ]:
             process_text = True
             process_table = True
 
